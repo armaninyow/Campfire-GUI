@@ -64,14 +64,15 @@ public class CampfireManagementScreen extends Screen {
 	private static final int TITLE_COLOR = 0xFF3F3F3F;
 
 	// Timer text
-	private static final int TIMER_COLOR     = 0xFFFFFFFF;
+	private static final int TIMER_COLOR        = 0xFFFFFFFF;
 	private static final int TIMER_SHADOW_COLOR = 0xFF555555;
 
 	// Tooltip colors
 	private static final int TOOLTIP_ITEM_COLOR = 0xFFFCFCFC;
 	private static final int TOOLTIP_TIME_COLOR = 0xFF545454;
 
-	// Auto-refresh every second
+	// Server refresh interval — still 1 second to keep data accurate,
+	// but the visual timers are now client-driven so this only re-anchors them.
 	private static final long REFRESH_INTERVAL_MS = 1000;
 
 	// Fire animation: re-roll frame every 3–5 ticks (at 20tps ≈ 150–250ms)
@@ -82,6 +83,16 @@ public class CampfireManagementScreen extends Screen {
 	private boolean isLit;
 	private boolean isSoulCampfire;
 	private List<CampfireGuiPacket.SlotInfo> slots;
+
+	/**
+	 * Per-slot client-side countdown in ticks (floats so they can be
+	 * decremented by the real frame delta rather than a fixed 1-tick step).
+	 * Anchored to server data on each refresh, then ticked down independently
+	 * every render frame via the partial-tick delta.
+	 *
+	 * Value of -1 means "not yet initialised" — fall back to server data.
+	 */
+	private final float[] slotTicksLeft = {-1f, -1f, -1f, -1f};
 
 	private int guiLeft;
 	private int guiTop;
@@ -101,6 +112,8 @@ public class CampfireManagementScreen extends Screen {
 		this.isSoulCampfire = isSoulCampfire;
 		this.slots          = slots;
 		this.pos            = pos;
+		// Anchor client timers to the initial server data
+		anchorTimers(slots);
 		// Initialise fire animation timers to random starting offsets
 		for (int i = 0; i < 3; i++) {
 			fireFrame[i]     = random.nextInt(LIT_TEXTURES.length);
@@ -108,11 +121,34 @@ public class CampfireManagementScreen extends Screen {
 		}
 	}
 
-	/** Called by CampfireGUIClient when a refresh payload arrives for this pos. */
+	/**
+	 * Called by CampfireGUIClient when a refresh payload arrives for this pos.
+	 * Re-anchors each slot's client timer to the freshly-received server value.
+	 */
 	public void updateData(boolean isLit, boolean isSoulCampfire, List<CampfireGuiPacket.SlotInfo> slots) {
 		this.isLit          = isLit;
 		this.isSoulCampfire = isSoulCampfire;
 		this.slots          = slots;
+		anchorTimers(slots);
+	}
+
+	/**
+	 * Snaps each slot's local countdown to the server-reported remaining ticks.
+	 * After this the client ticks them down independently each frame.
+	 */
+	private void anchorTimers(List<CampfireGuiPacket.SlotInfo> slots) {
+		for (int i = 0; i < 4; i++) {
+			if (i < slots.size()) {
+				CampfireGuiPacket.SlotInfo slot = slots.get(i);
+				if (!slot.itemId().isEmpty() && slot.cookingTotalTime() > 0) {
+					slotTicksLeft[i] = Math.max(0f, slot.cookingTotalTime() - slot.cookingTime());
+				} else {
+					slotTicksLeft[i] = -1f; // empty slot
+				}
+			} else {
+				slotTicksLeft[i] = -1f;
+			}
+		}
 	}
 
 	/** Exposed so CampfireGUIClient can compare which campfire this screen is for. */
@@ -168,16 +204,29 @@ public class CampfireManagementScreen extends Screen {
 
 	@Override
 	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-		// Auto-refresh: request updated data from server every second
+		// ── Server refresh (re-anchors timers) ──────────────────────────────
 		long now = System.currentTimeMillis();
 		if (now - lastRefreshTime >= REFRESH_INTERVAL_MS) {
 			ClientPlayNetworking.send(new CampfireGuiRefreshPacket(pos));
 			lastRefreshTime = now;
 		}
 
+		// ── Tick client-side timers forward by the real frame delta ──────────
+		// delta is the partial tick (0..1) from the last full game tick.
+		// We tick by 1 full game-tick equivalent per tick() call, but here we
+		// use the render delta to smoothly interpolate between ticks, giving us
+		// sub-tick precision every frame.
+		if (isLit) {
+			for (int i = 0; i < 4; i++) {
+				if (slotTicksLeft[i] > 0f) {
+					slotTicksLeft[i] = Math.max(0f, slotTicksLeft[i] - delta);
+				}
+			}
+		}
+
 		this.renderBackground(context, mouseX, mouseY, delta);
 
-		// Hover detection
+		// ── Hover detection ─────────────────────────────────────────────────
 		hoveredSlot = -1;
 		for (int i = 0; i < 4; i++) {
 			int sx = guiLeft + SLOT_X[i];
@@ -191,14 +240,14 @@ public class CampfireManagementScreen extends Screen {
 
 		RenderPipeline pipeline = RenderPipelines.GUI_TEXTURED;
 
-		// Container background
+		// ── Container background ─────────────────────────────────────────────
 		context.drawTexture(pipeline, CONTAINER_TEXTURE,
 			guiLeft, guiTop,
 			0f, 0f,
 			PNG_WIDTH, PNG_HEIGHT,
 			PNG_WIDTH, PNG_HEIGHT);
 
-		// Fire animations (only when lit)
+		// ── Fire animations (only when lit) ──────────────────────────────────
 		if (isLit) {
 			for (int i = 0; i < 3; i++) {
 				int fx = guiLeft + FIRE_X[i];
@@ -212,14 +261,14 @@ public class CampfireManagementScreen extends Screen {
 			}
 		}
 
-		// Title: "Campfire" or "Soul Campfire" depending on block type, shifted 1px up and 1px right
+		// ── Title ────────────────────────────────────────────────────────────
 		String titleStr = isSoulCampfire ? "Soul Campfire" : "Campfire";
 		int titleX = guiLeft + (PNG_WIDTH - this.textRenderer.getWidth(titleStr)) / 2 + 1;
 		context.drawText(this.textRenderer, titleStr,
 			titleX, guiTop + TITLE_Y,
 			TITLE_COLOR, false);
 
-		// Items and timers in slots
+		// ── Items and timers ─────────────────────────────────────────────────
 		for (int i = 0; i < 4; i++) {
 			int sx = guiLeft + SLOT_X[i];
 			int sy = guiTop  + SLOT_Y[i];
@@ -229,13 +278,15 @@ public class CampfireManagementScreen extends Screen {
 				ItemStack stack = slot.toItemStack();
 
 				if (!stack.isEmpty()) {
-					// Render item icon
 					context.drawItem(stack, sx, sy);
 
-					// Render timer at full scale, bottom-right of slot — identical to
-					// how vanilla draws the item count number (no matrix scaling)
-					int remaining = Math.max(0, slot.cookingTotalTime() - slot.cookingTime());
-					int seconds   = (int) Math.ceil(remaining / 20.0);
+					// Use the independent client-side timer for display.
+					// Fall back to server data if the timer hasn't been anchored yet.
+					float ticksRemaining = (slotTicksLeft[i] >= 0f)
+						? slotTicksLeft[i]
+						: Math.max(0f, slot.cookingTotalTime() - slot.cookingTime());
+
+					int seconds = (int) Math.ceil(ticksRemaining / 20.0f);
 					String timerStr = String.valueOf(seconds);
 					int textX = sx + SLOT_SIZE - this.textRenderer.getWidth(timerStr) + 4;
 					int textY = sy + SLOT_SIZE - this.textRenderer.fontHeight + 5;
@@ -248,22 +299,24 @@ public class CampfireManagementScreen extends Screen {
 
 		super.render(context, mouseX, mouseY, delta);
 
-		// Tooltip
+		// ── Tooltip ───────────────────────────────────────────────────────────
 		if (hoveredSlot >= 0 && hoveredSlot < slots.size()) {
 			CampfireGuiPacket.SlotInfo slot = slots.get(hoveredSlot);
 			if (!slot.toItemStack().isEmpty()) {
-				renderSlotTooltip(context, slot, mouseX, mouseY);
+				renderSlotTooltip(context, hoveredSlot, slot, mouseX, mouseY);
 			}
 		}
 	}
 
-	private void renderSlotTooltip(DrawContext context, CampfireGuiPacket.SlotInfo slot, int mouseX, int mouseY) {
+	private void renderSlotTooltip(DrawContext context, int slotIndex, CampfireGuiPacket.SlotInfo slot, int mouseX, int mouseY) {
 		List<Text> lines = new ArrayList<>();
 		// Line 1: item name
 		lines.add(slot.toItemStack().getName().copy().styled(s -> s.withColor(TOOLTIP_ITEM_COLOR)));
-		// Line 2: time remaining in seconds
-		int remaining = Math.max(0, slot.cookingTotalTime() - slot.cookingTime());
-		int seconds   = (int) Math.ceil(remaining / 20.0);
+		// Line 2: time remaining — use the live client-side timer
+		float ticksRemaining = (slotTicksLeft[slotIndex] >= 0f)
+			? slotTicksLeft[slotIndex]
+			: Math.max(0f, slot.cookingTotalTime() - slot.cookingTime());
+		int seconds = (int) Math.ceil(ticksRemaining / 20.0f);
 		lines.add(Text.literal(seconds + "s remaining").styled(s ->
 			s.withColor(TOOLTIP_TIME_COLOR).withShadowColor(0xFF151515)));
 		context.drawTooltip(this.textRenderer, lines, mouseX, mouseY);
