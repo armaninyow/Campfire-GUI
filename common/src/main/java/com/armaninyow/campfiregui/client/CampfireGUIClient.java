@@ -3,7 +3,7 @@ package com.armaninyow.campfiregui.client;
 import com.armaninyow.campfiregui.network.CampfireGuiPacket;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 public class CampfireGUIClient implements ClientModInitializer {
 
@@ -12,8 +12,8 @@ public class CampfireGUIClient implements ClientModInitializer {
 		// S2C: when server sends updated campfire data, update the open screen in-place
 		ClientPlayNetworking.registerGlobalReceiver(CampfireGuiPacket.Payload.ID, (payload, context) -> {
 			context.client().execute(() -> {
-				MinecraftClient client = context.client();
-				if (client.currentScreen instanceof CampfireManagementScreen screen
+				Minecraft client = context.client();
+				if (client.screen instanceof CampfireManagementScreen screen
 					&& screen.getPos().equals(payload.pos())) {
 					// Screen already open for this campfire — just refresh the data
 					screen.updateData(payload.isLit(), payload.isSoulCampfire(), payload.slots());
