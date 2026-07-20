@@ -22,7 +22,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-// 26.1.x — Mojang mappings (unobfuscated)
 @Environment(EnvType.CLIENT)
 public class CampfireManagementScreen extends Screen {
 
@@ -136,6 +135,7 @@ public class CampfireManagementScreen extends Screen {
 	public void removed() {
 		super.removed();
 		CampfireGuiScreenTracker.openScreenPositions.remove(pos);
+		CampfireGUIClient.recentlyClosedScreens.put(pos, System.currentTimeMillis());
 	}
 
 	@Override
@@ -168,20 +168,17 @@ public class CampfireManagementScreen extends Screen {
 
 	@Override
 	public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-		// No blur — just the dim overlay like vanilla container screens
 		graphics.fill(0, 0, this.width, this.height, 0x80000000);
 	}
 
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-		// ── Server refresh ───────────────────────────────────────────────────
 		long now = System.currentTimeMillis();
 		if (now - lastRefreshTime >= REFRESH_INTERVAL_MS) {
 			ClientPlayNetworking.send(new CampfireGuiRefreshPacket(pos));
 			lastRefreshTime = now;
 		}
 
-		// ── Tick client-side timers ──────────────────────────────────────────
 		if (isLit) {
 			for (int i = 0; i < 4; i++) {
 				if (slotTicksLeft[i] > 0f) {
@@ -190,7 +187,6 @@ public class CampfireManagementScreen extends Screen {
 			}
 		}
 
-		// ── Hover detection ──────────────────────────────────────────────────
 		hoveredSlot = -1;
 		for (int i = 0; i < 4; i++) {
 			int sx = guiLeft + SLOT_X[i];
@@ -202,10 +198,6 @@ public class CampfireManagementScreen extends Screen {
 			}
 		}
 
-
-
-		// ── Container background ─────────────────────────────────────────────
-		// blit(RenderPipeline, Identifier, x, y, uOffset, vOffset, uWidth, vHeight, texW, texH, color)
 		graphics.blit(RenderPipelines.GUI_TEXTURED, CONTAINER_TEXTURE,
 			guiLeft, guiTop,
 			0f, 0f,
@@ -213,7 +205,6 @@ public class CampfireManagementScreen extends Screen {
 			PNG_WIDTH, PNG_HEIGHT,
 			0xFFFFFFFF);
 
-		// ── Fire animations ──────────────────────────────────────────────────
 		if (isLit) {
 			for (int i = 0; i < 3; i++) {
 				int fx = guiLeft + FIRE_X[i];
@@ -228,13 +219,10 @@ public class CampfireManagementScreen extends Screen {
 			}
 		}
 
-		// ── Title ────────────────────────────────────────────────────────────
-		// text(Font, Component, x, y, color, shadow)
 		Component title = Component.literal(isSoulCampfire ? "Soul Campfire" : "Campfire");
 		int titleX = guiLeft + (PNG_WIDTH - this.font.width(title)) / 2 + 1;
 		graphics.text(this.font, title, titleX, guiTop + TITLE_Y, TITLE_COLOR, false);
 
-		// ── Items and progress bars ──────────────────────────────────────────
 		for (int i = 0; i < 4; i++) {
 			int sx = guiLeft + SLOT_X[i];
 			int sy = guiTop  + SLOT_Y[i];
@@ -244,7 +232,6 @@ public class CampfireManagementScreen extends Screen {
 				ItemStack stack = slot.toItemStack();
 
 				if (!stack.isEmpty()) {
-					// item(ItemStack, x, y)
 					graphics.item(stack, sx, sy);
 
 					float ticksRemaining = (slotTicksLeft[i] >= 0f)
@@ -266,11 +253,8 @@ public class CampfireManagementScreen extends Screen {
 			}
 		}
 
-		// ── Widgets ──────────────────────────────────────────────────────────
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
-		// ── Tooltip ───────────────────────────────────────────────────────────
-		// setTooltipForNextFrame(Font, List<Component>, Optional<TooltipComponent>, int, int)
 		if (hoveredSlot >= 0 && hoveredSlot < slots.size()) {
 			CampfireGuiPacket.SlotInfo slot = slots.get(hoveredSlot);
 			if (!slot.toItemStack().isEmpty()) {

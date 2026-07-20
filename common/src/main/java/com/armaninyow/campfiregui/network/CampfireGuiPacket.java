@@ -27,15 +27,11 @@ public class CampfireGuiPacket {
 
 	public static final Identifier OPEN_GUI_ID = Identifier.fromNamespaceAndPath(CampfireGUI.MOD_ID, "open_gui");
 
-	/**
-	 * Slim over-the-wire representation of a campfire slot.
-	 */
 	public record SlotInfo(String itemId, int count, int cookingTime, int cookingTotalTime) {
 
 		public ItemStack toItemStack() {
 			if (itemId.isEmpty()) return ItemStack.EMPTY;
 			try {
-				// get() returns Optional<Holder.Reference<Item>> in 26.1 — unwrap safely
 				Optional<? extends net.minecraft.core.Holder<Item>> holder =
 					BuiltInRegistries.ITEM.get(Identifier.parse(itemId));
 				if (holder.isEmpty()) return ItemStack.EMPTY;

@@ -7,9 +7,6 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 import net.minecraft.core.BlockPos;
 
-/**
- * Sent client→server to request a fresh CampfireGuiPacket.Payload for the given pos.
- */
 public record CampfireGuiRefreshPacket(BlockPos pos) implements CustomPacketPayload {
 
 	public static final Identifier REFRESH_ID = Identifier.fromNamespaceAndPath(CampfireGUI.MOD_ID, "refresh_gui");

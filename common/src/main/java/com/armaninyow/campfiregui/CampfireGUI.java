@@ -23,10 +23,8 @@ public class CampfireGUI implements ModInitializer {
 	public void onInitialize() {
 		CampfireGuiPacket.registerServerPackets();
 
-		// Register the C2S refresh packet
 		PayloadTypeRegistry.serverboundPlay().register(CampfireGuiRefreshPacket.ID, CampfireGuiRefreshPacket.CODEC);
 
-		// When the client requests a refresh, re-send the campfire data
 		ServerPlayNetworking.registerGlobalReceiver(CampfireGuiRefreshPacket.ID, (payload, context) -> {
 			ServerPlayer player = context.player();
 			var pos   = payload.pos();
@@ -38,7 +36,6 @@ public class CampfireGUI implements ModInitializer {
 			CampfireGuiPacket.sendToClient(player, campfire, state, pos);
 		});
 
-		// Open GUI on shift + right-click
 		UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
 			if (hand != InteractionHand.MAIN_HAND) return InteractionResult.PASS;
 			if (!player.isShiftKeyDown()) return InteractionResult.PASS;
@@ -47,7 +44,6 @@ public class CampfireGUI implements ModInitializer {
 			var state = world.getBlockState(pos);
 			if (!(state.getBlock() instanceof CampfireBlock)) return InteractionResult.PASS;
 
-			// Cancel vanilla interaction on both sides
 			if (world.isClientSide()) return InteractionResult.SUCCESS;
 
 			var blockEntity = world.getBlockEntity(pos);
